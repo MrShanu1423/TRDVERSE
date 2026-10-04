@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">TradeVerse</string>
+    <string name="title_activity_main">TradeVerse</string>
+    <string name="package_name">com.tradeverse.app</string>
+    <string name="custom_url_scheme">com.tradeverse.app</string>
+</resources>

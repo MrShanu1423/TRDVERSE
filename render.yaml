@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: tradeverse-api
+    runtime: node
+    plan: free
+    buildCommand: corepack enable && corepack prepare pnpm@10 --activate && pnpm install --frozen-lockfile=false && pnpm --filter @workspace/api-server run build
+    startCommand: node artifacts/api-server/dist/index.mjs
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: OWNER_ID
+        sync: false
+      - key: ANGEL_API_KEY
+        sync: false
+      - key: ANGEL_CLIENT_CODE
+        sync: false
+      - key: ANGEL_PIN
+        sync: false
+      - key: ANGEL_TOTP_SECRET
+        sync: false
+      - key: ANGEL_PUBLIC_IP
+        sync: false
+      - key: TESTNET_EVM_PRIVATE_KEY
+        sync: false

@@ -1,0 +1,42 @@
+import { Router, type IRouter } from "express";
+import healthRouter from "./health";
+import dashboardRouter from "./dashboard";
+import marketsRouter from "./markets";
+import portfolioRouter from "./portfolio";
+import ordersRouter from "./orders";
+import authRouter from "./auth";
+import liveRouter from "./live";
+import walletRouter from "./wallet";
+import marketdataRouter from "./marketdata";
+import tradeRouter from "./trade";
+import payRouter from "./pay";
+import pendingOrdersRouter from "./pending-orders";
+import watchlistRouter from "./watchlist";
+import fundsRouter from "./funds";
+import earnRouter from "./earn";
+import capitalGainsRouter from "./capital-gains";
+import p2pRouter from "./p2p";
+import futuresRouter from "./futures";
+
+const router: IRouter = Router();
+
+router.use(healthRouter);
+router.use(authRouter);
+router.use(liveRouter);
+router.use(walletRouter);
+router.use(marketdataRouter);
+router.use(tradeRouter);
+router.use(pendingOrdersRouter);
+router.use(watchlistRouter);
+router.use(fundsRouter);
+router.use(earnRouter);
+router.use(capitalGainsRouter);
+router.use(p2pRouter);
+router.use(futuresRouter);
+router.use(payRouter);
+router.use(dashboardRouter);
+router.use(marketsRouter);
+router.use(portfolioRouter);
+router.use(ordersRouter);
+
+export default router;

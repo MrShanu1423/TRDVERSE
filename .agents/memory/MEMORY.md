@@ -1,0 +1,1 @@
+- [TradeVerse visual direction](tradeverse-ui-direction.md) — use a dark, dense trading-cockpit system with clear market states and responsive bento panels.

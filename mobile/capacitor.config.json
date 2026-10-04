@@ -1,0 +1,19 @@
+{
+  "appId": "com.tradeverse.app",
+  "appName": "TradeVerse",
+  "webDir": "../artifacts/tradeverse/dist/public",
+  "backgroundColor": "#0B0E14",
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": false
+  },
+  "plugins": {
+    "SystemBars": {
+      "insetsHandling": "css",
+      "style": "DARK",
+      "initialViewportFitValueHint": "cover"
+    }
+  }
+}

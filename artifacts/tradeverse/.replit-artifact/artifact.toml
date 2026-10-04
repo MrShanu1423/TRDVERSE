@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "TradeVerse"
+description = "A unified Indian investing workspace for tracking crypto, stocks, mutual funds, and derivatives in one clear, high-confidence experience. The first release provides a polished dashboard, markets explorer, safe demo trading flow, and portfolio view ready for MySQL-backed persistence and Firebase authentication."
+version = "1.0.0"
+id = "artifacts/tradeverse"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 25385
+
+[services.development]
+run = "pnpm --filter @workspace/tradeverse run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/tradeverse", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/tradeverse/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "25385"
+BASE_PATH = "/"

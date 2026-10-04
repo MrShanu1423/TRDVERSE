@@ -1,0 +1,19 @@
+{
+  "name": "tradeverse-mobile",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Capacitor wrapper that turns the TradeVerse web build into an Android APK",
+  "scripts": {
+    "prepare:android": "node prepare-android.mjs",
+    "icon": "node fetch-icon.mjs"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.0.0",
+    "@capacitor/cli": "^8.0.0",
+    "@capacitor/core": "^8.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "sharp": "^0.34.0"
+  }
+}

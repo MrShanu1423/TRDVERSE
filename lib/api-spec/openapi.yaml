@@ -1,0 +1,700 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: API specification
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: dashboard
+    description: Portfolio and activity overview (legacy demo endpoints, now backed by the real paper engine)
+  - name: markets
+    description: Market discovery and asset details (legacy demo catalogue, crypto prices overlaid with live Binance data)
+  - name: portfolio
+    description: Holdings and positions (legacy demo endpoint, now backed by the real paper engine)
+  - name: orders
+    description: Safe demo order placement (legacy endpoint, now executes against the real paper engine)
+  - name: auth
+    description: OTP login, session, and identity
+  - name: trade
+    description: The real paper-trading engine - live-priced market orders, resting limit/stop orders, order history
+  - name: marketdata
+    description: Public live crypto prices and order-book depth (Binance, no key needed)
+  - name: live
+    description: Live stock search/quotes (Angel One) and owner-only real broker execution (kill-switched)
+  - name: watchlist
+    description: Starred symbols and price alerts, persisted per user
+  - name: wallet
+    description: Demo crypto wallet - address book, OTP-gated transfers (no real chain settlement)
+  - name: pay
+    description: Add money via Razorpay UPI QR (real webhook-verified credit) or demo credit
+security:
+  - bearerAuth: []
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      security: []
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+  /dashboard:
+    get:
+      operationId: getDashboard
+      tags: [dashboard]
+      summary: Get the signed-in user's dashboard summary
+      responses:
+        "200":
+          description: Dashboard summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Dashboard"
+  /activity:
+    get:
+      operationId: getActivity
+      tags: [dashboard]
+      summary: Get recent account activity
+      responses:
+        "200":
+          description: Recent activity
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Activity"
+  /market/assets:
+    get:
+      operationId: listAssets
+      tags: [markets]
+      summary: List market assets
+      security: []
+      parameters:
+        - name: category
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [all, crypto, stocks, funds]
+            default: all
+        - name: search
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: sort
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [popular, gainers, losers]
+            default: popular
+      responses:
+        "200":
+          description: Market assets
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MarketAsset"
+  /market/assets/{symbol}:
+    get:
+      operationId: getAsset
+      tags: [markets]
+      summary: Get market asset details
+      security: []
+      parameters:
+        - name: symbol
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Asset details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MarketAssetDetail"
+        "404":
+          description: Asset not found
+  /portfolio:
+    get:
+      operationId: getPortfolio
+      tags: [portfolio]
+      summary: Get portfolio snapshot
+      responses:
+        "200":
+          description: Portfolio snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Portfolio"
+  /orders:
+    get:
+      operationId: getOrders
+      tags: [orders]
+      summary: List the signed-in user's paper order history
+      responses:
+        "200":
+          description: Paper order history, most recent first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Order"
+    post:
+      operationId: placeDemoOrder
+      tags: [orders]
+      summary: Place a demo order
+      description: Executes a paper order against the signed-in user's account at the current market price. Live execution is not enabled by this endpoint.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrderInput"
+      responses:
+        "201":
+          description: Paper order created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+
+  /auth/request-otp:
+    post:
+      operationId: requestOtp
+      tags: [auth]
+      summary: Request a login OTP by email or phone
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RequestOtpInput" }
+      responses:
+        "200": { description: OTP sent (or dev-mode logged), content: { application/json: { schema: { type: object, properties: { ok: { type: boolean }, dev: { type: boolean }, kind: { type: string, enum: [email, phone] } } } } } }
+  /auth/verify-otp:
+    post:
+      operationId: verifyOtp
+      tags: [auth]
+      summary: Verify an OTP and start a session
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/VerifyOtpInput" }
+      responses:
+        "200": { description: Session token, content: { application/json: { schema: { type: object, properties: { token: { type: string }, id: { type: string }, kind: { type: string }, email: { type: string } } } } } }
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: Invalidate the current session
+      responses: { "200": { description: Logged out } }
+  /auth/me:
+    get:
+      operationId: getMe
+      tags: [auth]
+      summary: Get the signed-in identity
+      responses:
+        "200": { description: Identity, content: { application/json: { schema: { type: object, properties: { id: { type: string }, email: { type: string }, isOwner: { type: boolean, description: "True only for the server deployer (OWNER_ID env var)" } } } } } }
+
+  /market/crypto/live:
+    get:
+      operationId: getCryptoLive
+      tags: [marketdata]
+      summary: Every Binance USDT pair with live price, 24h change, high/low/volume, and the current USD/INR rate
+      security: []
+      responses:
+        "200": { description: Live crypto snapshot, content: { application/json: { schema: { $ref: "#/components/schemas/CryptoSnapshot" } } } }
+  /market/crypto/depth:
+    get:
+      operationId: getCryptoDepth
+      tags: [marketdata]
+      summary: Real order-book depth (top 20 levels/side) for a crypto symbol, converted to INR
+      security: []
+      parameters:
+        - { name: symbol, in: query, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Order book, content: { application/json: { schema: { $ref: "#/components/schemas/OrderBook" } } } }
+
+  /trade/orders:
+    get:
+      operationId: getTradeOrders
+      tags: [trade]
+      summary: Real paper order history (most recent first), separate from the legacy /orders demo endpoint
+      responses:
+        "200": { description: Order history, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/TradeOrder" } } } } }
+  /trade/portfolio:
+    get:
+      operationId: getTradePortfolio
+      tags: [trade]
+      summary: Real cash balance and live-valued holdings for the signed-in user
+      responses:
+        "200": { description: Portfolio snapshot, content: { application/json: { schema: { $ref: "#/components/schemas/TradePortfolio" } } } }
+  /trade/order:
+    post:
+      operationId: placeTradeOrder
+      tags: [trade]
+      summary: Execute a market order immediately at the current live price
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PlaceTradeOrderInput" }
+      responses:
+        "201": { description: Order filled, content: { application/json: { schema: { type: object, properties: { order: { $ref: "#/components/schemas/TradeOrder" }, balance: { type: number } } } } } }
+  /trade/pending-orders:
+    get:
+      operationId: getPendingOrders
+      tags: [trade]
+      summary: List the signed-in user's resting limit/stop orders
+      responses:
+        "200": { description: Pending orders, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/PendingOrder" } } } } }
+  /trade/pending-order:
+    post:
+      operationId: placePendingOrder
+      tags: [trade]
+      summary: Place a resting limit or stop order (filled by a 5s background poller once triggered)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PlacePendingOrderInput" }
+      responses:
+        "201": { description: Order placed, content: { application/json: { schema: { $ref: "#/components/schemas/PendingOrder" } } } }
+  /trade/pending-order/{id}/cancel:
+    post:
+      operationId: cancelPendingOrder
+      tags: [trade]
+      summary: Cancel an open pending order
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Cancelled, content: { application/json: { schema: { $ref: "#/components/schemas/PendingOrder" } } } }
+
+  /watchlist:
+    get:
+      operationId: getWatchlist
+      tags: [watchlist]
+      summary: List the signed-in user's starred symbols with live price
+      responses:
+        "200": { description: Watchlist, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/WatchlistItem" } } } } }
+    post:
+      operationId: addWatchlistItem
+      tags: [watchlist]
+      summary: Star a symbol
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/AddWatchlistItemInput" } } }
+      responses: { "201": { description: Added } }
+  /watchlist/{market}/{symbol}:
+    delete:
+      operationId: removeWatchlistItem
+      tags: [watchlist]
+      summary: Unstar a symbol
+      parameters:
+        - { name: market, in: path, required: true, schema: { type: string } }
+        - { name: symbol, in: path, required: true, schema: { type: string } }
+      responses: { "200": { description: Removed } }
+  /alerts:
+    get:
+      operationId: getAlerts
+      tags: [watchlist]
+      summary: List the signed-in user's price alerts
+      responses:
+        "200": { description: Alerts, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/PriceAlert" } } } } }
+    post:
+      operationId: createAlert
+      tags: [watchlist]
+      summary: Set a price alert (rejected if it would trigger immediately)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateAlertInput" }
+      responses:
+        "201": { description: Alert created, content: { application/json: { schema: { $ref: "#/components/schemas/PriceAlert" } } } }
+  /alerts/{id}/cancel:
+    post:
+      operationId: cancelAlert
+      tags: [watchlist]
+      summary: Cancel an open alert
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Cancelled, content: { application/json: { schema: { $ref: "#/components/schemas/PriceAlert" } } } }
+
+  /wallet/config:
+    get:
+      operationId: getWalletConfig
+      tags: [wallet]
+      summary: Supported coins/networks and whitelist cooldown for the demo wallet
+      responses: { "200": { description: Config } }
+  /wallet/balances:
+    get:
+      operationId: getWalletBalances
+      tags: [wallet]
+      summary: Demo crypto balances by coin
+      responses: { "200": { description: Balances } }
+  /wallet/addresses:
+    get:
+      operationId: getWalletAddresses
+      tags: [wallet]
+      summary: Saved withdrawal address book
+      responses: { "200": { description: Addresses } }
+    post:
+      operationId: addWalletAddress
+      tags: [wallet]
+      summary: Save a new withdrawal address (starts a whitelist cooldown)
+      responses: { "201": { description: Address saved } }
+  /wallet/addresses/{id}:
+    delete:
+      operationId: removeWalletAddress
+      tags: [wallet]
+      summary: Remove a saved address
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses: { "200": { description: Removed } }
+  /wallet/transfers:
+    get:
+      operationId: getWalletTransfers
+      tags: [wallet]
+      summary: Demo transfer history
+      responses: { "200": { description: Transfers } }
+  /wallet/transfer/init:
+    post:
+      operationId: initWalletTransfer
+      tags: [wallet]
+      summary: Start a withdrawal, sends a step-up OTP
+      responses: { "200": { description: OTP sent } }
+  /wallet/transfer/confirm:
+    post:
+      operationId: confirmWalletTransfer
+      tags: [wallet]
+      summary: Confirm a withdrawal with the step-up OTP (demo ledger only, no real chain settlement)
+      responses: { "200": { description: Transfer confirmed } }
+  /wallet/transfer/cancel:
+    post:
+      operationId: cancelWalletTransfer
+      tags: [wallet]
+      summary: Cancel a pending withdrawal
+      responses: { "200": { description: Cancelled } }
+
+  /pay/config:
+    get:
+      operationId: getPayConfig
+      tags: [pay]
+      summary: Whether Razorpay/demo-credit funding is available, and min/max amounts
+      security: []
+      responses: { "200": { description: Config } }
+  /pay/qr:
+    post:
+      operationId: createPayQr
+      tags: [pay]
+      summary: Create a Razorpay UPI QR code to add money
+      responses: { "200": { description: QR created } }
+  /pay/status/{qrId}:
+    get:
+      operationId: getPayStatus
+      tags: [pay]
+      summary: Poll whether a QR payment has been credited
+      parameters:
+        - { name: qrId, in: path, required: true, schema: { type: string } }
+      responses: { "200": { description: Status } }
+  /pay/demo-credit:
+    post:
+      operationId: payDemoCredit
+      tags: [pay]
+      summary: Add pretend money without Razorpay (only when DEMO_CREDIT=true on the server)
+      responses: { "200": { description: Credited } }
+
+  /live/status:
+    get:
+      operationId: getLiveStatus
+      tags: [live]
+      summary: Whether real broker execution is enabled/configured, and for this user, owner-gated
+      responses: { "200": { description: Status } }
+  /live/stocks/search:
+    get:
+      operationId: searchLiveStocks
+      tags: [live]
+      summary: Search the NSE instrument list (Angel One)
+      parameters:
+        - { name: q, in: query, required: false, schema: { type: string } }
+      responses: { "200": { description: Matches } }
+  /live/stocks/quotes:
+    get:
+      operationId: getLiveStockQuotes
+      tags: [live]
+      summary: Live LTP/OHLC/volume for NSE symbols (Angel One, needs server-side keys)
+      parameters:
+        - { name: symbols, in: query, required: true, schema: { type: string }, description: Comma-separated symbols }
+      responses: { "200": { description: Quotes } }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Token returned by POST /auth/verify-otp.
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+    Dashboard:
+      type: object
+      required: [portfolioValue, investedValue, dayChange, dayChangePercent, healthScore, cashBalance, watchlist]
+      properties:
+        portfolioValue: { type: number }
+        investedValue: { type: number }
+        dayChange: { type: number }
+        dayChangePercent: { type: number }
+        healthScore: { type: integer }
+        cashBalance: { type: number }
+        watchlist:
+          type: array
+          items: { $ref: "#/components/schemas/MarketAsset" }
+    MarketAsset:
+      type: object
+      required: [symbol, name, category, price, changePercent, marketCap, logo, sparkline]
+      properties:
+        symbol: { type: string }
+        name: { type: string }
+        category: { type: string, enum: [crypto, stocks, funds] }
+        price: { type: number }
+        changePercent: { type: number }
+        marketCap: { type: number }
+        logo: { type: string }
+        sparkline:
+          type: array
+          items: { type: number }
+    MarketAssetDetail:
+      allOf:
+        - $ref: "#/components/schemas/MarketAsset"
+        - type: object
+          required: [description, stats, chart]
+          properties:
+            description: { type: string }
+            stats:
+              type: object
+              required: [high, low, volume, marketCap]
+              properties:
+                high: { type: number }
+                low: { type: number }
+                volume: { type: number }
+                marketCap: { type: number }
+            chart:
+              type: array
+              items:
+                type: object
+                required: [label, value]
+                properties:
+                  label: { type: string }
+                  value: { type: number }
+    Holding:
+      type: object
+      required: [symbol, name, category, quantity, averagePrice, currentValue, pnl, pnlPercent, logo]
+      properties:
+        symbol: { type: string }
+        name: { type: string }
+        category: { type: string, enum: [crypto, stocks, funds] }
+        quantity: { type: number }
+        averagePrice: { type: number }
+        currentValue: { type: number }
+        pnl: { type: number }
+        pnlPercent: { type: number }
+        logo: { type: string }
+    Portfolio:
+      type: object
+      required: [totalValue, investedValue, totalPnl, totalPnlPercent, allocation, holdings]
+      properties:
+        totalValue: { type: number }
+        investedValue: { type: number }
+        totalPnl: { type: number }
+        totalPnlPercent: { type: number }
+        allocation:
+          type: array
+          items:
+            type: object
+            required: [label, value, color]
+            properties:
+              label: { type: string }
+              value: { type: number }
+              color: { type: string }
+        holdings:
+          type: array
+          items: { $ref: "#/components/schemas/Holding" }
+    Activity:
+      type: object
+      required: [id, type, title, detail, amount, timestamp]
+      properties:
+        id: { type: string }
+        type: { type: string, enum: [deposit, order, sip, reward] }
+        title: { type: string }
+        detail: { type: string }
+        amount: { type: number }
+        timestamp: { type: string }
+    OrderInput:
+      type: object
+      required: [symbol, side, orderType, quantity]
+      properties:
+        symbol: { type: string, minLength: 1 }
+        side: { type: string, enum: [buy, sell] }
+        orderType: { type: string, enum: [market, limit] }
+        quantity: { type: number, exclusiveMinimum: 0 }
+        limitPrice: { type: ["number", "null"] }
+    Order:
+      type: object
+      required: [id, symbol, side, orderType, quantity, status, createdAt, paper]
+      properties:
+        id: { type: string }
+        symbol: { type: string }
+        side: { type: string, enum: [buy, sell] }
+        orderType: { type: string, enum: [market, limit] }
+        quantity: { type: number }
+        status: { type: string, enum: [queued, simulated] }
+        createdAt: { type: string }
+        paper: { type: boolean }
+    CryptoRow:
+      type: object
+      properties:
+        symbol: { type: string }
+        pair: { type: string }
+        price: { type: number, description: USD }
+        changePct: { type: number }
+        high: { type: number }
+        low: { type: number }
+        volume: { type: number }
+    CryptoSnapshot:
+      type: object
+      properties:
+        updatedAt: { type: number }
+        stale: { type: boolean }
+        usdInr: { type: number }
+        inrSource: { type: string, enum: [live, fallback] }
+        count: { type: integer }
+        items: { type: array, items: { $ref: "#/components/schemas/CryptoRow" } }
+    OrderBookLevel:
+      type: object
+      properties: { price: { type: number }, qty: { type: number } }
+    OrderBook:
+      type: object
+      properties:
+        symbol: { type: string }
+        updatedAt: { type: number }
+        usdInr: { type: number }
+        bids: { type: array, items: { $ref: "#/components/schemas/OrderBookLevel" } }
+        asks: { type: array, items: { $ref: "#/components/schemas/OrderBookLevel" } }
+    TradeOrder:
+      type: object
+      properties:
+        id: { type: string }
+        market: { type: string, enum: [crypto, stock] }
+        symbol: { type: string }
+        side: { type: string, enum: [BUY, SELL] }
+        qty: { type: number }
+        price: { type: number }
+        value: { type: number }
+        fee: { type: number }
+        createdAt: { type: string }
+        paper: { type: boolean }
+    TradeHolding:
+      type: object
+      properties:
+        market: { type: string, enum: [crypto, stock] }
+        symbol: { type: string }
+        qty: { type: number }
+        avgPrice: { type: number }
+        cost: { type: number }
+        last: { type: ["number", "null"] }
+        value: { type: number }
+        pnl: { type: number }
+        pnlPct: { type: number }
+    TradePortfolio:
+      type: object
+      properties:
+        balance: { type: number }
+        feeRate: { type: number }
+        holdings: { type: array, items: { $ref: "#/components/schemas/TradeHolding" } }
+        paper: { type: boolean }
+    PendingOrder:
+      type: object
+      properties:
+        id: { type: string }
+        market: { type: string, enum: [crypto, stock] }
+        symbol: { type: string }
+        side: { type: string, enum: [buy, sell] }
+        kind: { type: string, enum: [limit, stop] }
+        quantity: { type: number }
+        triggerPrice: { type: number }
+        status: { type: string, enum: [open, filled, cancelled] }
+        note: { type: string }
+        filledPrice: { type: number }
+        createdAt: { type: string }
+        filledAt: { type: ["string", "null"] }
+    WatchlistItem:
+      type: object
+      properties:
+        market: { type: string, enum: [crypto, stock] }
+        symbol: { type: string }
+        price: { type: ["number", "null"] }
+        changePercent: { type: ["number", "null"] }
+        addedAt: { type: string }
+    PriceAlert:
+      type: object
+      properties:
+        id: { type: string }
+        market: { type: string, enum: [crypto, stock] }
+        symbol: { type: string }
+        condition: { type: string, enum: [above, below] }
+        targetPrice: { type: number }
+        status: { type: string, enum: [open, triggered, cancelled] }
+        triggeredPrice: { type: number }
+        createdAt: { type: string }
+        triggeredAt: { type: ["string", "null"] }
+    RequestOtpInput:
+      type: object
+      properties: { email: { type: string }, phone: { type: string } }
+    VerifyOtpInput:
+      type: object
+      required: [code]
+      properties: { email: { type: string }, phone: { type: string }, code: { type: string } }
+    PlaceTradeOrderInput:
+      type: object
+      required: [market, symbol, side, quantity]
+      properties: { market: { type: string, enum: [crypto, stock] }, symbol: { type: string }, side: { type: string, enum: [BUY, SELL] }, quantity: { type: string } }
+    PlacePendingOrderInput:
+      type: object
+      required: [market, symbol, side, kind, quantity, triggerPrice]
+      properties: { market: { type: string, enum: [crypto, stock] }, symbol: { type: string }, side: { type: string, enum: [BUY, SELL] }, kind: { type: string, enum: [LIMIT, STOP] }, quantity: { type: number }, triggerPrice: { type: number } }
+    AddWatchlistItemInput:
+      type: object
+      required: [market, symbol]
+      properties: { market: { type: string, enum: [crypto, stock] }, symbol: { type: string } }
+    CreateAlertInput:
+      type: object
+      required: [market, symbol, condition, targetPrice]
+      properties: { market: { type: string, enum: [crypto, stock] }, symbol: { type: string }, condition: { type: string, enum: [above, below] }, targetPrice: { type: number } }
+
