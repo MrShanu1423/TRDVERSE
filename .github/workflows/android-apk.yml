@@ -1,0 +1,94 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+
+permissions:
+  contents: write   # needed to publish the APK as a GitHub Release
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    env:
+      API_URL: ${{ vars.API_URL }}          # Settings > Secrets and variables > Actions > Variables
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check API_URL
+        run: |
+          if [ -z "$API_URL" ]; then
+            echo "::warning::Repository variable API_URL is empty. The APK will install, but it cannot reach your TradeVerse server. Set API_URL (e.g. https://api.yourdomain.com) and run this workflow again."
+          fi
+
+      - uses: pnpm/action-setup@v4
+        with: { version: 10 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 21 }   # Capacitor 8 needs JDK 21
+      - uses: android-actions/setup-android@v3
+
+      - name: Apply official app icon
+        working-directory: mobile
+        run: |
+          npm install
+          node fetch-icon.mjs
+          sed -i "s#__APK_URL__#https://github.com/${{ github.repository }}/releases/latest/download/TradeVerse.apk#" ../artifacts/tradeverse/public/download.html
+
+      - name: Build web app
+        run: |
+          printf 'window.TV_CONFIG = { API_URL: "%s" };\n' "$API_URL" > artifacts/tradeverse/public/config.js
+          pnpm install --no-frozen-lockfile
+          PORT=3000 BASE_PATH=/ pnpm --filter @workspace/tradeverse run build
+
+      - name: Create Android project
+        working-directory: mobile
+        env:
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          npm install
+          node prepare-android.mjs config
+          [ -d android ] || npx cap add android   # android/ is already committed
+          npx capacitor-assets generate --android
+          node prepare-android.mjs patch
+          npx cap sync android
+
+      - name: Build release APK (unsigned)
+        working-directory: mobile/android
+        run: ./gradlew assembleRelease --no-daemon
+
+      - name: Sign APK
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KS_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          set -e
+          KS_PASS="${KS_PASS:-tradeverse-ci-pass}"; KS_ALIAS="${KS_ALIAS:-tradeverse}"
+          if [ -n "$KS_B64" ]; then
+            echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          else
+            echo "::warning::No ANDROID_KEYSTORE_BASE64 secret: using a one-off key. Installing a newer build over an older one will need an uninstall first. See README-APK.md to add a permanent key."
+            keytool -genkeypair -v -keystore "$RUNNER_TEMP/release.jks" -alias "$KS_ALIAS" -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass "$KS_PASS" -keypass "$KS_PASS" -dname "CN=TradeVerse, O=TradeVerse, C=IN"
+          fi
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          IN=mobile/android/app/build/outputs/apk/release/app-release-unsigned.apk
+          "$BT/zipalign" -f -p 4 "$IN" "$RUNNER_TEMP/aligned.apk"
+          "$BT/apksigner" sign --ks "$RUNNER_TEMP/release.jks" --ks-key-alias "$KS_ALIAS" --ks-pass "pass:$KS_PASS" --key-pass "pass:$KS_PASS" \
+            --out TradeVerse.apk "$RUNNER_TEMP/aligned.apk"
+          "$BT/apksigner" verify --verbose TradeVerse.apk
+
+      - uses: actions/upload-artifact@v4
+        with: { name: TradeVerse-apk, path: TradeVerse.apk }
+
+      - name: Publish download link (GitHub Release)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view latest >/dev/null 2>&1 || gh release create latest --title "TradeVerse Android APK" --notes "Latest build. Download TradeVerse.apk and install."
+          gh release upload latest TradeVerse.apk --clobber
+          echo "### Direct APK link" >> "$GITHUB_STEP_SUMMARY"
+          echo "https://github.com/${{ github.repository }}/releases/latest/download/TradeVerse.apk" >> "$GITHUB_STEP_SUMMARY"
