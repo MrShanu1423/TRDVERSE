@@ -35,6 +35,38 @@ const mail = process.env.SMTP_HOST
     })
   : null;
 
+/**
+ * Most free cloud hosts (Render included) silently drop outbound SMTP (port 587/465) to stop
+ * spam abuse, so raw nodemailer just hangs until it times out there even with correct credentials.
+ * Resend's API runs over plain HTTPS, so it isn't affected - preferred whenever RESEND_API_KEY is set.
+ * Without a verified sending domain, Resend's sandbox sender only delivers to the Resend account's
+ * own email, which is exactly the owner-login case this was needed for.
+ */
+async function sendEmailOtp(to: string, code: string): Promise<boolean> {
+  const resendKey = process.env.RESEND_API_KEY;
+  if (resendKey) {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${resendKey}` },
+      body: JSON.stringify({
+        from: process.env.RESEND_FROM || "TradeVerse <onboarding@resend.dev>",
+        to: [to],
+        subject: "Your TradeVerse OTP",
+        text: `Your OTP is ${code}. Valid for 5 minutes. Never share it with anyone.`,
+      }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) throw new Error(`Resend HTTP ${res.status}: ${await res.text().catch(() => "")}`);
+    return true;
+  }
+  if (mail) {
+    await mail.sendMail({ from: process.env.SMTP_FROM || process.env.SMTP_USER, to, subject: "Your TradeVerse OTP", text: `Your OTP is ${code}. Valid for 5 minutes. Never share it with anyone.` });
+    return true;
+  }
+  console.log(`[DEV OTP] ${to}: ${code}`);
+  return false;
+}
+
 // Mobile OTP: point SMS_WEBHOOK_URL to your SMS gateway (MSG91 / Twilio / Fast2SMS relay).
 // It receives POST {to, message}. Without it, OTP is printed in the server log (dev only).
 async function sendSms(to: string, message: string) {
@@ -71,10 +103,8 @@ r.post("/auth/request-otp", async (req, res) => {
   otps.set(t.id, { code, exp: Date.now() + 5 * 60_000, tries: 0, last: Date.now() });
   try {
     let real = true;
-    if (t.kind === "email") {
-      if (mail) await mail.sendMail({ from: process.env.SMTP_FROM || process.env.SMTP_USER, to: t.id, subject: "Your TradeVerse OTP", text: `Your OTP is ${code}. Valid for 5 minutes. Never share it with anyone.` });
-      else (real = false), console.log(`[DEV OTP] ${t.id}: ${code}`);
-    } else real = await sendSms(t.id, `${code} is your TradeVerse OTP. Valid for 5 minutes. Do not share.`);
+    if (t.kind === "email") real = await sendEmailOtp(t.id, code);
+    else real = await sendSms(t.id, `${code} is your TradeVerse OTP. Valid for 5 minutes. Do not share.`);
     res.json({ ok: true, dev: !real, kind: t.kind });
   } catch {
     res.status(502).json({ error: "OTP send nahi ho paya" });
