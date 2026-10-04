@@ -3,6 +3,10 @@ import { Router, type IRouter } from "express";
 /** Public crypto market data: every Binance USDT spot pair, cached for 2s so many users don't hammer Binance. */
 const r: IRouter = Router();
 const REST = process.env.BINANCE_REST || "https://api.binance.com";
+// Without a (free) Demo API key, CoinGecko's anonymous rate limit is low enough that a shared cloud
+// egress IP (many unrelated free-tier apps on the same host) can trip HTTP 429 - COINGECKO_API_KEY
+// is optional but raises the limit to one dedicated to this app.
+const CG_HEADERS: Record<string, string> = process.env.COINGECKO_API_KEY ? { "x-cg-demo-api-key": process.env.COINGECKO_API_KEY } : {};
 export type CryptoRow = { symbol: string; pair: string; price: number; changePct: number; high: number; low: number; volume: number };
 let cache: { at: number; rows: CryptoRow[]; usdInr: number; inrSource: "live" | "fallback" } | null = null;
 let inflight: Promise<void> | null = null;
@@ -19,7 +23,7 @@ async function usdInrRate(): Promise<{ rate: number; source: "live" | "fallback"
   const fb = Number(process.env.USD_INR_FALLBACK || 88);
   try {
     // CoinGecko's tether/INR price: the crypto-market rate (often at a premium to bank forex), matching what an Indian exchange shows.
-    const res = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=tether&vs_currencies=inr", { signal: AbortSignal.timeout(5000) });
+    const res = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=tether&vs_currencies=inr", { headers: CG_HEADERS, signal: AbortSignal.timeout(5000) });
     if (res.ok) {
       const j = (await res.json()) as any;
       const rate = Number(j?.tether?.inr);
@@ -60,7 +64,7 @@ async function fromBinance(): Promise<CryptoRow[]> {
 async function fromCoinGecko(): Promise<CryptoRow[]> {
   const res = await fetch(
     "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=volume_desc&per_page=250&page=1&price_change_percentage=24h",
-    { signal: AbortSignal.timeout(10_000) },
+    { headers: CG_HEADERS, signal: AbortSignal.timeout(10_000) },
   );
   if (!res.ok) throw new Error(`CoinGecko HTTP ${res.status}`);
   const all = (await res.json()) as any[];
@@ -92,7 +96,9 @@ async function refresh(): Promise<void> {
   })().finally(() => { inflight = null; });
   return inflight;
 }
-export async function cryptoSnapshot(maxAgeMs = 2000) {
+// 2s was fine for Binance's generous limits; CoinGecko's free/anonymous tier is far stricter, so the
+// default cache window is wider to keep this app's own request rate well under CoinGecko's 429 threshold.
+export async function cryptoSnapshot(maxAgeMs = 15_000) {
   if (!cache || Date.now() - cache.at > maxAgeMs) {
     try { await refresh(); } catch (e) { if (!cache) throw e; }
   }
