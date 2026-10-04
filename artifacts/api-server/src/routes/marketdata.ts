@@ -38,22 +38,55 @@ async function usdInrRate(): Promise<{ rate: number; source: "live" | "fallback"
   return inrCache;
 }
 
+async function fromBinance(): Promise<CryptoRow[]> {
+  const res = await fetch(`${REST}/api/v3/ticker/24hr`, { signal: AbortSignal.timeout(10_000) });
+  if (!res.ok) throw new Error(`Binance HTTP ${res.status}`);
+  const all = (await res.json()) as any[];
+  const rows: CryptoRow[] = [];
+  for (const t of all) {
+    if (!/^[A-Z0-9]{2,15}USDT$/.test(t.symbol) || /(UP|DOWN|BULL|BEAR)USDT$/.test(t.symbol)) continue;
+    const price = Number(t.lastPrice), volume = Number(t.quoteVolume);
+    if (!(price > 0) || !(volume > 0)) continue;
+    rows.push({ symbol: t.symbol.slice(0, -4), pair: t.symbol, price, changePct: Number(t.priceChangePercent), high: Number(t.highPrice), low: Number(t.lowPrice), volume });
+  }
+  return rows;
+}
+
+/**
+ * Binance blocks most cloud/datacenter IPs with HTTP 451 (legal/geo-compliance), which breaks this
+ * entirely once deployed off a home connection. CoinGecko's free public API is reachable from cloud
+ * hosts and covers the same coins, so it's the fallback whenever Binance fails for any reason.
+ */
+async function fromCoinGecko(): Promise<CryptoRow[]> {
+  const res = await fetch(
+    "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=volume_desc&per_page=250&page=1&price_change_percentage=24h",
+    { signal: AbortSignal.timeout(10_000) },
+  );
+  if (!res.ok) throw new Error(`CoinGecko HTTP ${res.status}`);
+  const all = (await res.json()) as any[];
+  const rows: CryptoRow[] = [];
+  for (const c of all) {
+    const price = Number(c.current_price), volume = Number(c.total_volume);
+    if (!(price > 0) || !(volume > 0) || !c.symbol) continue;
+    rows.push({
+      symbol: String(c.symbol).toUpperCase(),
+      pair: `${String(c.symbol).toUpperCase()}USDT`,
+      price,
+      changePct: Number(c.price_change_percentage_24h) || 0,
+      high: Number(c.high_24h) || price,
+      low: Number(c.low_24h) || price,
+      volume,
+    });
+  }
+  return rows;
+}
+
 async function refresh(): Promise<void> {
   if (inflight) return inflight;
   inflight = (async () => {
-    const [res, inr] = await Promise.all([
-      fetch(`${REST}/api/v3/ticker/24hr`, { signal: AbortSignal.timeout(10_000) }),
-      usdInrRate(),
-    ]);
-    if (!res.ok) throw new Error(`Binance HTTP ${res.status}`);
-    const all = (await res.json()) as any[];
-    const rows: CryptoRow[] = [];
-    for (const t of all) {
-      if (!/^[A-Z0-9]{2,15}USDT$/.test(t.symbol) || /(UP|DOWN|BULL|BEAR)USDT$/.test(t.symbol)) continue;
-      const price = Number(t.lastPrice), volume = Number(t.quoteVolume);
-      if (!(price > 0) || !(volume > 0)) continue;
-      rows.push({ symbol: t.symbol.slice(0, -4), pair: t.symbol, price, changePct: Number(t.priceChangePercent), high: Number(t.highPrice), low: Number(t.lowPrice), volume });
-    }
+    const inr = await usdInrRate();
+    let rows: CryptoRow[];
+    try { rows = await fromBinance(); } catch { rows = await fromCoinGecko(); }
     rows.sort((a, b) => b.volume - a.volume);
     cache = { at: Date.now(), rows, usdInr: inr.rate, inrSource: inr.source };
   })().finally(() => { inflight = null; });

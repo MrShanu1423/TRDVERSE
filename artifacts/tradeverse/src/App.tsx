@@ -772,6 +772,8 @@ function NotFound() {
 function Router() {
   const [location] = useLocation();
   const [, setLocation] = useLocation();
+  // Without this, a new page inherits the previous page's scroll position instead of opening at the top.
+  useEffect(() => { window.scrollTo(0, 0); }, [location]);
   const ordersQuery = useGetOrders();
   const orders = (ordersQuery.data as Order[] | undefined) ?? [];
   const handleOrderPlaced = () => {
