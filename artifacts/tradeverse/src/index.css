@@ -653,7 +653,8 @@ td:not(:first-child) { font-family: var(--app-font-mono); }
 .lm-row:hover, .lm-row:focus-visible { background: hsl(var(--muted)); outline: none; }
 .lm-name { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .lm-name small { display: block; }
-.lm-price { display: flex; flex-direction: column; text-align: right; }
+.lm-price { display: flex; flex-direction: column; text-align: right; min-width: 0; }
+.lm-price strong, .lm-price small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lm-price small, .lm-name small { font-size: 11px; }
 .lm-chg { text-align: right; }
 .lm-vol { text-align: right; }

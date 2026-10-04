@@ -69,12 +69,22 @@ async function fromCoinGecko(): Promise<CryptoRow[]> {
   if (!res.ok) throw new Error(`CoinGecko HTTP ${res.status}`);
   const all = (await res.json()) as any[];
   const rows: CryptoRow[] = [];
+  // Unlike a single exchange's own ticker (Binance: one symbol = one pair), CoinGecko aggregates many
+  // unrelated coins that happen to share a ticker (e.g. several different "AI" tokens), and low-liquidity
+  // listings can carry wildly wrong prices from a single bad trade on an obscure venue. The API response
+  // is already sorted by volume_desc, so keeping only the first (most liquid) occurrence per symbol and
+  // requiring a sane market cap filters out both the duplicates and the garbage micro-cap price spikes.
+  const seen = new Set<string>();
   for (const c of all) {
-    const price = Number(c.current_price), volume = Number(c.total_volume);
+    const price = Number(c.current_price), volume = Number(c.total_volume), marketCap = Number(c.market_cap);
     if (!(price > 0) || !(volume > 0) || !c.symbol) continue;
+    if (!(marketCap > 1_000_000)) continue;
+    const symbol = String(c.symbol).toUpperCase();
+    if (seen.has(symbol)) continue;
+    seen.add(symbol);
     rows.push({
-      symbol: String(c.symbol).toUpperCase(),
-      pair: `${String(c.symbol).toUpperCase()}USDT`,
+      symbol,
+      pair: `${symbol}USDT`,
       price,
       changePct: Number(c.price_change_percentage_24h) || 0,
       high: Number(c.high_24h) || price,

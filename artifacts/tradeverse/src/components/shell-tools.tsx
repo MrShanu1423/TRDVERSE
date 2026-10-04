@@ -48,7 +48,9 @@ export function useMe() {
       .then((r) => (r.ok ? r.json() : null)).then((j) => { if (!dead && j?.id) { setId(j.id); setIsOwner(!!j.isOwner); } }).catch(() => {});
     return () => { dead = true; };
   }, []);
-  const label = !id ? 'Your account' : id.includes('@') ? id : `+91 ${id.replace(/^\+?91/, '').replace(/(\d{2})\d{6}(\d{2})/, '$1••••••$2')}`;
+  // A full email can be 30-40+ chars, which breaks the large greeting heading on a phone width - the
+  // part before @ is still personally recognizable and short enough to never overflow.
+  const label = !id ? 'Your account' : id.includes('@') ? id.split('@')[0] : `+91 ${id.replace(/^\+?91/, '').replace(/(\d{2})\d{6}(\d{2})/, '$1••••••$2')}`;
   const initials = !id ? 'TV' : id.includes('@') ? id.slice(0, 2).toUpperCase() : id.slice(-2);
   return { id, label, initials, isOwner };
 }
