@@ -79,6 +79,10 @@ async function fromCoinGecko(): Promise<CryptoRow[]> {
     const price = Number(c.current_price), volume = Number(c.total_volume), marketCap = Number(c.market_cap);
     if (!(price > 0) || !(volume > 0) || !c.symbol) continue;
     if (!(marketCap > 1_000_000)) continue;
+    // Belt-and-suspenders: a bad source can report a self-consistently inflated price AND market cap
+    // together, so market cap alone doesn't always catch it. No real top-250-by-volume coin trades
+    // anywhere near $1M/unit (BTC's ATH is two orders of magnitude below that).
+    if (price > 1_000_000) continue;
     const symbol = String(c.symbol).toUpperCase();
     if (seen.has(symbol)) continue;
     seen.add(symbol);
