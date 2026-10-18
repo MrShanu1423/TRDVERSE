@@ -38,11 +38,29 @@ const mail = process.env.SMTP_HOST
 /**
  * Most free cloud hosts (Render included) silently drop outbound SMTP (port 587/465) to stop
  * spam abuse, so raw nodemailer just hangs until it times out there even with correct credentials.
- * Resend's API runs over plain HTTPS, so it isn't affected - preferred whenever RESEND_API_KEY is set.
- * Without a verified sending domain, Resend's sandbox sender only delivers to the Resend account's
- * own email, which is exactly the owner-login case this was needed for.
+ * Both Brevo and Resend run over plain HTTPS, so neither is affected.
+ * Brevo only requires verifying one sender email (no domain/DNS needed) and can then deliver to any
+ * recipient - preferred whenever BREVO_API_KEY is set, since that's what "anyone can log in" needs.
+ * Resend's free sandbox (no verified domain) can only deliver to the Resend account's own email, so
+ * it's kept as a fallback for the owner-only login case.
  */
 async function sendEmailOtp(to: string, code: string): Promise<boolean> {
+  const brevoKey = process.env.BREVO_API_KEY;
+  if (brevoKey) {
+    const res = await fetch("https://api.brevo.com/v3/smtp/email", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json", "api-key": brevoKey },
+      body: JSON.stringify({
+        sender: { email: process.env.BREVO_SENDER_EMAIL, name: "TradeVerse" },
+        to: [{ email: to }],
+        subject: "Your TradeVerse OTP",
+        textContent: `Your OTP is ${code}. Valid for 5 minutes. Never share it with anyone.`,
+      }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) throw new Error(`Brevo HTTP ${res.status}: ${await res.text().catch(() => "")}`);
+    return true;
+  }
   const resendKey = process.env.RESEND_API_KEY;
   if (resendKey) {
     const res = await fetch("https://api.resend.com/emails", {
